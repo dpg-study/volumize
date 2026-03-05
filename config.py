@@ -23,4 +23,4 @@ class Config:
         return None
 
     MIN_PHOTOS = 15
-    MAX_IMAGE_SIZE = 4000
+    MAX_IMAGE_SIZE = 2500
