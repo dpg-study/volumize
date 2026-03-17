@@ -13,7 +13,7 @@ class MeshDialog(tk.Toplevel):
         super().__init__(parent)
         self.parent = parent
         self.title("Создание 3D-модели из облака точек")
-        self.geometry("600x500")
+        self.geometry("650x650")
         self.resizable(True, True)
 
         self.mesh_gen = MeshGenerator()
@@ -26,24 +26,27 @@ class MeshDialog(tk.Toplevel):
         main_frame = ttk.Frame(self, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # === Входной файл ===
+        # Входной файл
         input_frame = ttk.LabelFrame(main_frame, text="Входной файл (облако точек)", padding=5)
         input_frame.pack(fill=tk.X, pady=5)
 
-        ttk.Button(input_frame, text="📂 Выбрать PLY файл",
+        btn_frame = ttk.Frame(input_frame)
+        btn_frame.pack(fill=tk.X)
+
+        ttk.Button(btn_frame, text="Выбрать PLY файл",
                    command=self.select_input).pack(side=tk.LEFT, padx=5)
 
-        self.input_label = ttk.Label(input_frame, text="Файл не выбран")
+        self.input_label = ttk.Label(btn_frame, text="Файл не выбран")
         self.input_label.pack(side=tk.LEFT, padx=10)
 
-        # === Информация о файле ===
+        # Информация о файле
         info_frame = ttk.LabelFrame(main_frame, text="Информация", padding=5)
         info_frame.pack(fill=tk.X, pady=5)
 
         self.info_text = tk.Text(info_frame, height=3, state='disabled')
         self.info_text.pack(fill=tk.X, padx=5, pady=5)
 
-        # === Метод реконструкции ===
+        # Метод реконструкции
         method_frame = ttk.LabelFrame(main_frame, text="Метод реконструкции", padding=5)
         method_frame.pack(fill=tk.X, pady=5)
 
@@ -56,7 +59,25 @@ class MeshDialog(tk.Toplevel):
         ttk.Radiobutton(method_frame, text="Ball Pivoting (для органических форм)",
                         variable=self.method_var, value="ball").pack(anchor=tk.W, pady=2)
 
-        # === Параметры ===
+        # Качество реконструкции (НОВОЕ!)
+        quality_frame = ttk.LabelFrame(main_frame, text="Качество реконструкции", padding=5)
+        quality_frame.pack(fill=tk.X, pady=5)
+
+        self.quality_var = tk.StringVar(value="high")
+
+        quality_draft = ttk.Radiobutton(quality_frame, text="Черновик (быстро, для тестов)",
+                                        variable=self.quality_var, value="draft")
+        quality_draft.pack(anchor=tk.W, pady=2)
+
+        quality_medium = ttk.Radiobutton(quality_frame, text="Среднее (баланс скорости и качества)",
+                                         variable=self.quality_var, value="medium")
+        quality_medium.pack(anchor=tk.W, pady=2)
+
+        quality_high = ttk.Radiobutton(quality_frame, text="Высокое (медленно, но качественно)",
+                                       variable=self.quality_var, value="high")
+        quality_high.pack(anchor=tk.W, pady=2)
+
+        # Параметры
         params_frame = ttk.LabelFrame(main_frame, text="Параметры", padding=5)
         params_frame.pack(fill=tk.X, pady=5)
 
@@ -64,9 +85,14 @@ class MeshDialog(tk.Toplevel):
         poisson_frame = ttk.Frame(params_frame)
         poisson_frame.pack(fill=tk.X, pady=2)
         ttk.Label(poisson_frame, text="Глубина Poisson (8-12):").pack(side=tk.LEFT)
-        self.depth_var = tk.IntVar(value=9)
-        ttk.Spinbox(poisson_frame, from_=5, to=12, width=5,
+        self.depth_var = tk.IntVar(value=11)
+        ttk.Spinbox(poisson_frame, from_=8, to=12, width=5,
                     textvariable=self.depth_var).pack(side=tk.LEFT, padx=5)
+
+        # Подсказка по глубине
+        depth_hint = ttk.Label(poisson_frame, text="(чем выше, тем детальнее)",
+                               font=('Arial', 8), foreground='gray')
+        depth_hint.pack(side=tk.LEFT, padx=5)
 
         # Альфа для Alpha Shapes
         alpha_frame = ttk.Frame(params_frame)
@@ -75,7 +101,7 @@ class MeshDialog(tk.Toplevel):
         self.alpha_var = tk.DoubleVar(value=0.03)
         ttk.Entry(alpha_frame, textvariable=self.alpha_var, width=10).pack(side=tk.LEFT, padx=5)
 
-        # === Пост-обработка ===
+        # Пост-обработка
         post_frame = ttk.LabelFrame(main_frame, text="Пост-обработка", padding=5)
         post_frame.pack(fill=tk.X, pady=5)
 
@@ -87,36 +113,32 @@ class MeshDialog(tk.Toplevel):
         ttk.Checkbutton(post_frame, text="Сгладить поверхность",
                         variable=self.smooth_var).pack(anchor=tk.W)
 
-        self.fill_holes_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(post_frame, text="Заполнить дыры",
-                        variable=self.fill_holes_var).pack(anchor=tk.W)
-
-        # === Кнопки ===
+        # Кнопки
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(fill=tk.X, pady=10)
 
-        # СОЗДАЕМ КНОПКИ С СОХРАНЕНИЕМ В self
-        self.generate_btn = ttk.Button(btn_frame, text="▶ Создать 3D-модель",
-                                       command=self.generate_mesh)
+        self.generate_btn = ttk.Button(btn_frame, text="Создать 3D-модель",
+                                       command=self.generate_mesh, style='Accent.TButton')
         self.generate_btn.pack(side=tk.LEFT, padx=5)
 
-        self.save_btn = ttk.Button(btn_frame, text="💾 Сохранить как...",
+        self.save_btn = ttk.Button(btn_frame, text="Сохранить как...",
                                    command=self.save_mesh, state='disabled')
         self.save_btn.pack(side=tk.LEFT, padx=5)
 
-        self.view_btn = ttk.Button(btn_frame, text="👁 Просмотреть",
+        self.view_btn = ttk.Button(btn_frame, text="Просмотреть",
                                    command=self.view_mesh, state='disabled')
         self.view_btn.pack(side=tk.LEFT, padx=5)
 
-        # === Прогресс ===
+        # Прогресс
         self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
         self.progress.pack(fill=tk.X, pady=5)
 
-        # === Лог ===
-        log_frame = ttk.LabelFrame(main_frame, text="Лог", padding=5)
+        # Лог
+        log_frame = ttk.LabelFrame(main_frame, text="Лог выполнения", padding=5)
         log_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        self.log_text = tk.Text(log_frame, height=8, wrap=tk.WORD)
+        self.log_text = tk.Text(log_frame, height=8, wrap=tk.WORD,
+                                bg='#1e1e1e', fg='#d4d4d4')
         scrollbar = ttk.Scrollbar(log_frame, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=scrollbar.set)
 
@@ -143,10 +165,10 @@ class MeshDialog(tk.Toplevel):
         """Показывает информацию о файле"""
         if self.mesh_gen.load_point_cloud(self.input_file):
             info = self.mesh_gen.get_info()
-            self.log(f"✅ Файл загружен: {self.input_file}")
-            self.log(f"📊 Количество точек: {info.get('points', 0)}")
+            self.log(f"Файл загружен: {self.input_file}")
+            self.log(f"Количество точек: {info.get('points', 0)}")
         else:
-            self.log("❌ Ошибка загрузки файла")
+            self.log("Ошибка загрузки файла")
 
     def generate_mesh(self):
         """Запускает создание mesh"""
@@ -154,122 +176,98 @@ class MeshDialog(tk.Toplevel):
             messagebox.showerror("Ошибка", "Сначала выберите входной файл")
             return
 
-        # Блокируем кнопку генерации
         self.generate_btn.config(state='disabled')
         self.save_btn.config(state='disabled')
         self.view_btn.config(state='disabled')
         self.progress.start()
 
-        # Очищаем лог перед началом
         self.log_text.config(state='normal')
         self.log_text.delete(1.0, tk.END)
         self.log_text.config(state='disabled')
 
-        self.log("🚀 Запуск процесса создания 3D-модели...")
-        self.log(f"📁 Файл: {os.path.basename(self.input_file)}")
-        self.log(f"🔧 Метод: {self.method_var.get()}")
+        self.log("=" * 50)
+        self.log("ЗАПУСК ПРОЦЕССА СОЗДАНИЯ 3D-МОДЕЛИ")
+        self.log(f"Файл: {os.path.basename(self.input_file)}")
+        self.log(f"Метод: {self.method_var.get()}")
+        self.log(f"Качество: {self.quality_var.get()}")
+        self.log(f"Глубина: {self.depth_var.get()}")
+        self.log("=" * 50)
 
         def update_progress(message):
-            """Обновление прогресса из потока"""
             self.after(0, lambda: self.log(message))
 
         def generate_thread():
             try:
-                # Шаг 1: Загрузка облака точек
-                update_progress("📂 Загрузка облака точек...")
+                # Загружаем облако точек
+                update_progress("Загрузка облака точек...")
                 if not self.mesh_gen.load_point_cloud(self.input_file):
-                    update_progress("❌ Ошибка загрузки файла")
+                    update_progress("Ошибка загрузки файла")
                     return
 
-                points_count = len(self.mesh_gen.pcd.points) if self.mesh_gen.pcd else 0
-                update_progress(f"✅ Загружено {points_count} точек")
-
-                # Шаг 2: Выбор метода
                 method = self.method_var.get()
+                quality = self.quality_var.get()
+                depth = self.depth_var.get()
 
                 if method == "poisson":
-                    depth = self.depth_var.get()
-                    update_progress(f"🔨 Poisson реконструкция (глубина {depth})...")
-                    update_progress("⏳ Это может занять 5-10 минут...")
-
-                    # Засекаем время
-                    import time
-                    start_time = time.time()
-
-                    # Запускаем реконструкцию
-                    self.mesh_gen.generate_mesh_poisson(depth=depth)
-
-                    elapsed = time.time() - start_time
-                    update_progress(f"✅ Poisson завершен за {elapsed:.1f} секунд")
+                    # Используем новый метод с заполнением дыр
+                    self.mesh_gen.generate_hole_free_mesh(depth=depth, quality=quality)
 
                 elif method == "alpha":
                     alpha = self.alpha_var.get()
-                    update_progress(f"🔨 Alpha Shapes реконструкция (alpha={alpha})...")
+                    update_progress(f"Alpha Shapes реконструкция (alpha={alpha})...")
                     self.mesh_gen.generate_mesh_alpha(alpha=alpha)
 
                 elif method == "ball":
-                    update_progress(f"🔨 Ball Pivoting реконструкция...")
+                    update_progress("Ball Pivoting реконструкция...")
                     self.mesh_gen.generate_mesh_ball_pivoting()
 
-                # Шаг 3: Пост-обработка
+                # Пост-обработка
                 if self.mesh_gen.mesh:
-                    update_progress("🔧 Применение пост-обработки...")
-
                     if self.simplify_var.get():
-                        update_progress("  📉 Упрощение модели...")
+                        update_progress("Упрощение модели...")
                         self.mesh_gen.simplify_mesh()
 
                     if self.smooth_var.get():
-                        update_progress("  ✨ Сглаживание...")
-                        self.mesh_gen.smooth_mesh()
+                        update_progress("Сглаживание...")
+                        self.mesh_gen.smooth_mesh(iterations=3)
 
-                    if self.fill_holes_var.get():
-                        update_progress("  🕳️ Заполнение дыр...")
-                        self.mesh_gen.fill_small_holes()
-
-                    update_progress("  🧹 Очистка модели...")
+                    update_progress("Очистка модели...")
                     self.mesh_gen.clean_mesh()
 
-                    # Шаг 4: Результат
                     info = self.mesh_gen.get_info()
-                    update_progress(f"✅ Модель успешно создана!")
-                    update_progress(f"📊 Вершин: {info.get('vertices', 0)}")
-                    update_progress(f"📊 Треугольников: {info.get('triangles', 0)}")
+                    update_progress("=" * 50)
+                    update_progress("МОДЕЛЬ УСПЕШНО СОЗДАНА!")
+                    update_progress(f"Вершин: {info.get('vertices', 0)}")
+                    update_progress(f"Треугольников: {info.get('triangles', 0)}")
+                    if info.get('watertight'):
+                        update_progress("✓ Модель без дыр (водонепроницаема)")
+                    else:
+                        update_progress("⚠ Модель имеет мелкие дыры")
+                    update_progress("=" * 50)
 
-                    # Активируем кнопки
                     self.after(0, self.enable_save_buttons)
                 else:
-                    update_progress("❌ Не удалось создать модель")
+                    update_progress("Не удалось создать модель")
 
             except Exception as e:
                 import traceback
                 error_msg = str(e)
                 trace = traceback.format_exc()
                 update_progress(f"❌ Ошибка: {error_msg}")
-                print(trace)  # Печатаем в консоль для отладки
+                print(trace)
             finally:
                 self.after(0, self.progress.stop)
                 self.after(0, lambda: self.generate_btn.config(state='normal'))
 
-        # Запускаем поток
-        import threading
         thread = threading.Thread(target=generate_thread)
         thread.daemon = True
         thread.start()
-
-        # Добавляем проверку через 30 секунд для отладки
-        def check_timeout():
-            if thread.is_alive():
-                self.log("⏳ Процесс все еще выполняется... Это нормально для больших файлов.")
-                self.log("💡 Poisson с depth=11 может занимать 5-15 минут.")
-
-        self.after(30000, check_timeout)  # Проверка через 30 секунд
 
     def enable_save_buttons(self):
         """Активирует кнопки сохранения и просмотра"""
         self.save_btn.config(state='normal')
         self.view_btn.config(state='normal')
-        self.log("✅ Кнопки сохранения и просмотра активированы")
+        self.log("Кнопки сохранения и просмотра активированы")
 
     def save_mesh(self):
         """Сохраняет mesh в файл"""
@@ -288,20 +286,21 @@ class MeshDialog(tk.Toplevel):
         )
         if filename:
             if self.mesh_gen.save_mesh(filename):
-                self.log(f"💾 Модель сохранена: {filename}")
+                self.log(f"Модель сохранена: {filename}")
                 messagebox.showinfo("Успех", f"Модель сохранена:\n{filename}")
             else:
-                self.log("❌ Ошибка сохранения")
+                self.log("Ошибка сохранения")
 
     def view_mesh(self):
         """Открывает mesh во вьювере"""
         if self.mesh_gen.mesh and hasattr(self.parent, 'main_window') and hasattr(self.parent.main_window, 'viewer'):
             import tempfile
             temp_file = os.path.join(tempfile.gettempdir(), 'temp_mesh.ply')
-            self.mesh_gen.save_mesh(temp_file)
-            self.parent.main_window.viewer.load_model(temp_file)
-            self.parent.main_window.notebook.select(0)
-            self.log("👁 Модель открыта в 3D вьювере")
+            if self.mesh_gen.save_mesh(temp_file):
+                self.parent.main_window.viewer.load_model(temp_file)
+                self.log("Модель открыта в 3D вьювере")
+            else:
+                self.log("Ошибка сохранения временного файла")
 
     def log(self, message):
         """Добавляет сообщение в лог"""

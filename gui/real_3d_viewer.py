@@ -8,64 +8,65 @@ import time
 
 
 class Real3DViewer:
-    """Настоящий 3D-вьювер на базе Open3D с управлением"""
+    """3D-вьювер на базе Open3D с управлением"""
 
-    def __init__(self, parent_frame, config):
+    def __init__(self, parent_frame, config, embedded=False):
         self.parent = parent_frame
         self.config = config
+        self.embedded = embedded
         self.vis = None
         self.geometry = None
+        self.coord_frame = None
+        self.show_coord = True
         self.is_loaded = False
         self.view_control = None
         self.is_running = True
 
-        # Создаем фрейм для управления
         self.setup_ui()
-
-        # Запускаем вьювер в отдельном потоке
         self.start_viewer_thread()
 
     def setup_ui(self):
         """Создает панель управления"""
-        # Главный фрейм
         self.main_frame = ttk.Frame(self.parent)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Панель управления сверху
         control_panel = ttk.Frame(self.main_frame)
         control_panel.pack(fill=tk.X, pady=5)
 
-        # Кнопки управления
-        ttk.Button(control_panel, text="📂 Загрузить модель",
+        ttk.Button(control_panel, text="Загрузить модель",
                    command=self.load_model_dialog).pack(side=tk.LEFT, padx=2)
 
-        ttk.Button(control_panel, text="🔄 Сбросить вид",
+        ttk.Button(control_panel, text="Сбросить вид",
                    command=self.reset_view).pack(side=tk.LEFT, padx=2)
 
-        ttk.Button(control_panel, text="🎭 Облако точек",
+        ttk.Button(control_panel, text="Очистить",
+                   command=self.clear_viewer).pack(side=tk.LEFT, padx=2)
+
+        self.toggle_coord_btn = ttk.Button(control_panel, text="Скрыть стрелки",
+                                           command=self.toggle_coord_frame)
+        self.toggle_coord_btn.pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(control_panel, text="Облако точек",
                    command=self.show_pointcloud).pack(side=tk.LEFT, padx=2)
 
-        ttk.Button(control_panel, text="🔷 Поверхность (Poisson)",
+        ttk.Button(control_panel, text="Поверхность",
                    command=self.create_mesh).pack(side=tk.LEFT, padx=2)
 
-        ttk.Button(control_panel, text="📸 Скриншот",
+        ttk.Button(control_panel, text="Скриншот",
                    command=self.take_screenshot).pack(side=tk.LEFT, padx=2)
 
-        # Статус
         self.status_var = tk.StringVar(value="Готов к работе")
         status_label = ttk.Label(control_panel, textvariable=self.status_var)
         status_label.pack(side=tk.RIGHT, padx=10)
 
-        # Инструкция
         info_frame = ttk.LabelFrame(self.main_frame, text="Управление")
         info_frame.pack(fill=tk.X, pady=5)
 
-        info_text = """🖱️ Мышь: Левая кнопка - вращение | Правая - масштаб | Колесо - приближение
-⌨️ Клавиши: R - сброс вида | P - облако точек | M - поверхность | S - скриншот"""
+        info_text = """Мышь: Левая кнопка - вращение | Правая - масштаб | Колесо - приближение
+Клавиши: R - сброс вида | C - очистить | F - скрыть/показать стрелки | P - облако точек | M - поверхность | S - скриншот"""
 
         ttk.Label(info_frame, text=info_text, font=('Arial', 9)).pack(pady=5)
 
-        # Фрейм для Open3D (будет вставлен позже)
         self.viewer_frame = ttk.Frame(self.main_frame)
         self.viewer_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -73,71 +74,131 @@ class Real3DViewer:
         """Запускает Open3D в отдельном потоке"""
 
         def viewer_thread():
-            # Создаем визуализатор
             self.vis = o3d.visualization.VisualizerWithKeyCallback()
+
+            if self.embedded:
+                try:
+                    x = self.parent.winfo_rootx()
+                    y = self.parent.winfo_rooty()
+                    width = max(400, self.parent.winfo_width())
+                    height = max(300, self.parent.winfo_height())
+                except:
+                    x, y, width, height = 100, 100, 800, 600
+            else:
+                x, y, width, height = 100, 100, 800, 600
+
             self.vis.create_window(
                 window_name="3D Viewer",
-                width=800,
-                height=600,
+                width=width,
+                height=height,
+                left=x,
+                top=y,
                 visible=True
             )
 
-            # Добавляем координатную сетку
-            coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0)
-            self.vis.add_geometry(coord_frame)
+            self.coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0)
+            self.vis.add_geometry(self.coord_frame)
 
-            # Настраиваем опции рендеринга
             opt = self.vis.get_render_option()
-            opt.background_color = np.array([0.1, 0.1, 0.1])  # темно-серый
+            opt.background_color = np.array([0.15, 0.15, 0.15])
             opt.point_size = 2.0
             opt.line_width = 1.0
 
-            # Получаем control для управления камерой
             self.view_control = self.vis.get_view_control()
-
-            # Добавляем обработчики клавиш
             self.setup_key_callbacks()
 
-            # Основной цикл
             while self.is_running:
                 self.vis.poll_events()
                 self.vis.update_renderer()
-                time.sleep(0.01)
+
+                if self.embedded:
+                    time.sleep(0.05)
+                else:
+                    time.sleep(0.01)
 
             self.vis.destroy_window()
 
         thread = threading.Thread(target=viewer_thread, daemon=True)
         thread.start()
+        time.sleep(1)
 
     def setup_key_callbacks(self):
         """Настройка горячих клавиш"""
         if not self.vis:
             return
 
-        # Сброс вида по клавише R
         def reset_callback(vis):
             self.reset_view()
             return False
 
-        # Облако точек по клавише P
+        def clear_callback(vis):
+            self.clear_viewer()
+            return False
+
+        def toggle_coord_callback(vis):
+            self.toggle_coord_frame()
+            return False
+
         def pointcloud_callback(vis):
             self.show_pointcloud()
             return False
 
-        # Поверхность по клавише M
         def mesh_callback(vis):
             self.create_mesh()
             return False
 
-        # Скриншот по клавише S
         def screenshot_callback(vis):
             self.take_screenshot()
             return False
 
         self.vis.register_key_callback(ord('R'), reset_callback)
+        self.vis.register_key_callback(ord('C'), clear_callback)
+        self.vis.register_key_callback(ord('F'), toggle_coord_callback)
         self.vis.register_key_callback(ord('P'), pointcloud_callback)
         self.vis.register_key_callback(ord('M'), mesh_callback)
         self.vis.register_key_callback(ord('S'), screenshot_callback)
+
+    def clear_viewer(self):
+        """Очищает вьювер от всех моделей"""
+        if not self.vis:
+            return
+
+        def clear_thread():
+            self.vis.clear_geometries()
+            if self.show_coord and self.coord_frame:
+                self.vis.add_geometry(self.coord_frame)
+            self.geometry = None
+            self.is_loaded = False
+            self.status_var.set("Вьювер очищен")
+
+        thread = threading.Thread(target=clear_thread, daemon=True)
+        thread.start()
+
+    def toggle_coord_frame(self):
+        """Показывает/скрывает координатные стрелки"""
+        if not self.vis:
+            return
+
+        # ИСПРАВЛЕНО: убрал get_geometries()
+        def toggle_thread():
+            self.show_coord = not self.show_coord
+            if self.show_coord:
+                try:
+                    self.vis.add_geometry(self.coord_frame, reset_bounding_box=False)
+                except:
+                    pass
+                self.toggle_coord_btn.config(text="Скрыть стрелки")
+                self.status_var.set("Стрелки показаны")
+            else:
+                try:
+                    self.vis.remove_geometry(self.coord_frame, reset_bounding_box=False)
+                except:
+                    pass
+                self.toggle_coord_btn.config(text="Показать стрелки")
+                self.status_var.set("Стрелки скрыты")
+
+        thread = threading.Thread(target=toggle_thread, daemon=True)
+        thread.start()
 
     def load_model_dialog(self):
         """Диалог загрузки модели"""
@@ -155,13 +216,11 @@ class Real3DViewer:
 
     def load_model(self, filepath):
         """Загружает модель из файла"""
-        self.status_var.set(f"⏳ Загрузка: {os.path.basename(filepath)}...")
+        self.status_var.set(f"Загрузка: {os.path.basename(filepath)}...")
 
         def load_thread():
             try:
-                # Определяем тип файла и загружаем
                 if filepath.endswith('.ply'):
-                    # Пробуем загрузить как mesh, если не получится - как pointcloud
                     try:
                         mesh = o3d.io.read_triangle_mesh(filepath)
                         if mesh.has_triangles():
@@ -176,23 +235,26 @@ class Real3DViewer:
                 else:
                     self.geometry = o3d.io.read_point_cloud(filepath)
 
-                # Центрируем модель
                 if self.geometry:
                     self.geometry.translate(-self.geometry.get_center())
 
-                    # Добавляем в визуализатор
+                    self.vis.clear_geometries()
+
+                    if self.show_coord and self.coord_frame:
+                        self.vis.add_geometry(self.coord_frame)
+
                     self.vis.add_geometry(self.geometry)
 
-                    # Настраиваем камеру
-                    self.view_control.set_front([0, 0, -1])
-                    self.view_control.set_up([0, -1, 0])
-                    self.view_control.set_zoom(1.0)
+                    if self.view_control:
+                        self.view_control.set_front([0, 0, -1])
+                        self.view_control.set_up([0, -1, 0])
+                        self.view_control.set_zoom(1.0)
 
                     self.is_loaded = True
-                    self.status_var.set(f"✅ Загружено: {os.path.basename(filepath)}")
+                    self.status_var.set(f"Загружено: {os.path.basename(filepath)}")
 
             except Exception as e:
-                self.status_var.set(f"❌ Ошибка: {str(e)}")
+                self.status_var.set(f"Ошибка: {str(e)}")
 
         thread = threading.Thread(target=load_thread, daemon=True)
         thread.start()
@@ -208,46 +270,50 @@ class Real3DViewer:
     def show_pointcloud(self):
         """Показывает как облако точек"""
         if self.geometry and self.vis:
-            # Если это mesh, конвертируем в облако точек
-            if isinstance(self.geometry, o3d.geometry.TriangleMesh):
-                pcd = self.geometry.sample_points_uniformly(number_of_points=100000)
-                self.vis.clear_geometries()
-                self.vis.add_geometry(pcd)
-                self.geometry = pcd
-                self.status_var.set("Режим: облако точек")
+            def convert_thread():
+                if isinstance(self.geometry, o3d.geometry.TriangleMesh):
+                    pcd = self.geometry.sample_points_uniformly(number_of_points=100000)
+
+                    self.vis.clear_geometries()
+                    if self.show_coord and self.coord_frame:
+                        self.vis.add_geometry(self.coord_frame)
+                    self.vis.add_geometry(pcd)
+                    self.geometry = pcd
+                    self.status_var.set("Режим: облако точек")
+
+            thread = threading.Thread(target=convert_thread, daemon=True)
+            thread.start()
 
     def create_mesh(self):
         """Создает поверхность из облака точек методом Пуассона"""
         if isinstance(self.geometry, o3d.geometry.PointCloud):
-            self.status_var.set("⏳ Построение поверхности...")
+            self.status_var.set("Построение поверхности...")
 
             def mesh_thread():
                 try:
-                    # Оцениваем нормали
                     self.geometry.estimate_normals(
                         search_param=o3d.geometry.KDTreeSearchParamHybrid(
                             radius=0.1, max_nn=30
                         )
                     )
 
-                    # Строим поверхность
                     mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
                         self.geometry, depth=9
                     )
 
-                    # Обрезаем низкокачественные области
                     vertices_to_remove = densities < np.quantile(densities, 0.1)
                     mesh.remove_vertices_by_mask(vertices_to_remove)
 
-                    # Обновляем в визуализаторе
                     self.vis.clear_geometries()
+                    if self.show_coord and self.coord_frame:
+                        self.vis.add_geometry(self.coord_frame)
                     self.vis.add_geometry(mesh)
                     self.geometry = mesh
 
-                    self.status_var.set("✅ Поверхность построена")
+                    self.status_var.set("Поверхность построена")
 
                 except Exception as e:
-                    self.status_var.set(f"❌ Ошибка: {str(e)}")
+                    self.status_var.set(f"Ошибка: {str(e)}")
 
             thread = threading.Thread(target=mesh_thread, daemon=True)
             thread.start()
@@ -261,7 +327,7 @@ class Real3DViewer:
             )
             if filename:
                 self.vis.capture_screen_image(filename)
-                self.status_var.set(f"📸 Скриншот сохранен: {os.path.basename(filename)}")
+                self.status_var.set(f"Скриншот сохранен: {os.path.basename(filename)}")
 
     def close(self):
         """Закрывает вьювер"""
