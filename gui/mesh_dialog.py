@@ -2,310 +2,150 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
 import os
+import sys
 
 from core.mesh_generator import MeshGenerator
 
 
 class MeshDialog(tk.Toplevel):
-    """Диалог для создания mesh из облака точек"""
-
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
-        self.title("Создание 3D-модели из облака точек")
-        self.geometry("650x650")
-        self.resizable(True, True)
+        self.title("Настройки 3D Реконструкции (Mesh)")
+        self.geometry("600x750")
+        self.minsize(550, 700)
+        self.configure(bg='#2b2b2b')
 
         self.mesh_gen = MeshGenerator()
         self.input_file = None
 
+        self.transient(parent)
+        self.grab_set()
+
         self.setup_ui()
 
     def setup_ui(self):
-        # Основной фрейм
-        main_frame = ttk.Frame(self, padding=10)
+        scale_style = {
+            "bg": "#2b2b2b",
+            "fg": "white",
+            "highlightthickness": 0,
+            "orient": tk.HORIZONTAL,
+            "troughcolor": "#404040",
+            "activebackground": "#0078d4"
+        }
+
+        main_frame = ttk.Frame(self, padding=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Входной файл
-        input_frame = ttk.LabelFrame(main_frame, text="Входной файл (облако точек)", padding=5)
-        input_frame.pack(fill=tk.X, pady=5)
+        file_group = ttk.LabelFrame(main_frame, text=" 1. ВХОДНЫЕ ДАННЫЕ ", padding=10)
+        file_group.pack(fill=tk.X, pady=(0, 15))
 
-        btn_frame = ttk.Frame(input_frame)
-        btn_frame.pack(fill=tk.X)
+        self.path_var = tk.StringVar(value="Выберите файл .ply")
+        ttk.Entry(file_group, textvariable=self.path_var, state='readonly').pack(fill=tk.X, pady=(0, 5))
+        ttk.Button(file_group, text="ОБЗОР ОБЛАКА ТОЧЕК", command=self.select_file).pack(fill=tk.X)
 
-        ttk.Button(btn_frame, text="Выбрать PLY файл",
-                   command=self.select_input).pack(side=tk.LEFT, padx=5)
+        gen_group = ttk.LabelFrame(main_frame, text=" 2. ПАРАМЕТРЫ ПОВЕРХНОСТИ (POISSON) ", padding=15)
+        gen_group.pack(fill=tk.X, pady=10)
 
-        self.input_label = ttk.Label(btn_frame, text="Файл не выбран")
-        self.input_label.pack(side=tk.LEFT, padx=10)
+        ttk.Label(gen_group, text="Детализация (Depth 5-12):").pack(anchor=tk.W)
+        self.depth_scale = tk.Scale(gen_group, from_=5, to=12, **scale_style)
+        self.depth_scale.set(9)
+        self.depth_scale.pack(fill=tk.X, pady=(0, 5))
 
-        # Информация о файле
-        info_frame = ttk.LabelFrame(main_frame, text="Информация", padding=5)
-        info_frame.pack(fill=tk.X, pady=5)
+        proc_group = ttk.LabelFrame(main_frame, text=" 3. СГЛАЖИВАНИЕ И ОПТИМИЗАЦИЯ ", padding=15)
+        proc_group.pack(fill=tk.X, pady=10)
 
-        self.info_text = tk.Text(info_frame, height=3, state='disabled')
-        self.info_text.pack(fill=tk.X, padx=5, pady=5)
+        ttk.Label(proc_group, text="Итерации сглаживания (Laplacian):").pack(anchor=tk.W)
+        self.smooth_scale = tk.Scale(proc_group, from_=0, to=20, **scale_style)
+        self.smooth_scale.set(5)
+        self.smooth_scale.pack(fill=tk.X, pady=(0, 10))
 
-        # Метод реконструкции
-        method_frame = ttk.LabelFrame(main_frame, text="Метод реконструкции", padding=5)
-        method_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(proc_group, text="Упрощение (целевое кол-во треугольников):").pack(anchor=tk.W)
+        self.tri_scale = tk.Scale(proc_group, from_=10000, to=1000000, resolution=10000, **scale_style)
+        self.tri_scale.set(100000)
+        self.tri_scale.pack(fill=tk.X, pady=(0, 10))
 
-        self.method_var = tk.StringVar(value="poisson")
+        self.clean_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(proc_group, text="Автоматическая чистка (дубликаты, шум)", variable=self.clean_var).pack(
+            anchor=tk.W)
 
-        ttk.Radiobutton(method_frame, text="Poisson (лучший для замкнутых объектов)",
-                        variable=self.method_var, value="poisson").pack(anchor=tk.W, pady=2)
-        ttk.Radiobutton(method_frame, text="Alpha Shapes (для открытых поверхностей)",
-                        variable=self.method_var, value="alpha").pack(anchor=tk.W, pady=2)
-        ttk.Radiobutton(method_frame, text="Ball Pivoting (для органических форм)",
-                        variable=self.method_var, value="ball").pack(anchor=tk.W, pady=2)
+        self.log_text = tk.Text(main_frame, height=6, bg='#1e1e1e', fg='#98C379', font=('Consolas', 9), borderwidth=0,
+                                padx=10, pady=10)
+        self.log_text.pack(fill=tk.BOTH, expand=True, pady=15)
 
-        # Качество реконструкции (НОВОЕ!)
-        quality_frame = ttk.LabelFrame(main_frame, text="Качество реконструкции", padding=5)
-        quality_frame.pack(fill=tk.X, pady=5)
+        self.run_btn = ttk.Button(main_frame, text="ЗАПУСТИТЬ ОБРАБОТКУ", style='Accent.TButton',
+                                  state='disabled', command=self.start_processing)
+        self.run_btn.pack(fill=tk.X)
 
-        self.quality_var = tk.StringVar(value="high")
+    def select_file(self):
+        path = filedialog.askopenfilename(filetypes=[("Point Cloud", "*.ply")])
+        if path:
+            self.input_file = path
+            self.path_var.set(os.path.basename(path))
+            self.run_btn.config(state='normal')
+            self.log(f"Выбран файл: {os.path.basename(path)}")
 
-        quality_draft = ttk.Radiobutton(quality_frame, text="Черновик (быстро, для тестов)",
-                                        variable=self.quality_var, value="draft")
-        quality_draft.pack(anchor=tk.W, pady=2)
-
-        quality_medium = ttk.Radiobutton(quality_frame, text="Среднее (баланс скорости и качества)",
-                                         variable=self.quality_var, value="medium")
-        quality_medium.pack(anchor=tk.W, pady=2)
-
-        quality_high = ttk.Radiobutton(quality_frame, text="Высокое (медленно, но качественно)",
-                                       variable=self.quality_var, value="high")
-        quality_high.pack(anchor=tk.W, pady=2)
-
-        # Параметры
-        params_frame = ttk.LabelFrame(main_frame, text="Параметры", padding=5)
-        params_frame.pack(fill=tk.X, pady=5)
-
-        # Глубина для Poisson
-        poisson_frame = ttk.Frame(params_frame)
-        poisson_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(poisson_frame, text="Глубина Poisson (8-12):").pack(side=tk.LEFT)
-        self.depth_var = tk.IntVar(value=11)
-        ttk.Spinbox(poisson_frame, from_=8, to=12, width=5,
-                    textvariable=self.depth_var).pack(side=tk.LEFT, padx=5)
-
-        # Подсказка по глубине
-        depth_hint = ttk.Label(poisson_frame, text="(чем выше, тем детальнее)",
-                               font=('Arial', 8), foreground='gray')
-        depth_hint.pack(side=tk.LEFT, padx=5)
-
-        # Альфа для Alpha Shapes
-        alpha_frame = ttk.Frame(params_frame)
-        alpha_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(alpha_frame, text="Alpha параметр:").pack(side=tk.LEFT)
-        self.alpha_var = tk.DoubleVar(value=0.03)
-        ttk.Entry(alpha_frame, textvariable=self.alpha_var, width=10).pack(side=tk.LEFT, padx=5)
-
-        # Пост-обработка
-        post_frame = ttk.LabelFrame(main_frame, text="Пост-обработка", padding=5)
-        post_frame.pack(fill=tk.X, pady=5)
-
-        self.simplify_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(post_frame, text="Упростить модель (уменьшить полигоны)",
-                        variable=self.simplify_var).pack(anchor=tk.W)
-
-        self.smooth_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(post_frame, text="Сгладить поверхность",
-                        variable=self.smooth_var).pack(anchor=tk.W)
-
-        # Кнопки
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill=tk.X, pady=10)
-
-        self.generate_btn = ttk.Button(btn_frame, text="Создать 3D-модель",
-                                       command=self.generate_mesh, style='Accent.TButton')
-        self.generate_btn.pack(side=tk.LEFT, padx=5)
-
-        self.save_btn = ttk.Button(btn_frame, text="Сохранить как...",
-                                   command=self.save_mesh, state='disabled')
-        self.save_btn.pack(side=tk.LEFT, padx=5)
-
-        self.view_btn = ttk.Button(btn_frame, text="Просмотреть",
-                                   command=self.view_mesh, state='disabled')
-        self.view_btn.pack(side=tk.LEFT, padx=5)
-
-        # Прогресс
-        self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
-        self.progress.pack(fill=tk.X, pady=5)
-
-        # Лог
-        log_frame = ttk.LabelFrame(main_frame, text="Лог выполнения", padding=5)
-        log_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-
-        self.log_text = tk.Text(log_frame, height=8, wrap=tk.WORD,
-                                bg='#1e1e1e', fg='#d4d4d4')
-        scrollbar = ttk.Scrollbar(log_frame, command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=scrollbar.set)
-
-        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-    def select_input(self):
-        """Выбор входного PLY файла"""
-        filename = filedialog.askopenfilename(
-            title="Выберите PLY файл с облаком точек",
-            filetypes=[
-                ("PLY files", "*.ply"),
-                ("XYZ files", "*.xyz"),
-                ("PTS files", "*.pts"),
-                ("All files", "*.*")
-            ]
-        )
-        if filename:
-            self.input_file = filename
-            self.input_label.config(text=os.path.basename(filename))
-            self.show_file_info()
-
-    def show_file_info(self):
-        """Показывает информацию о файле"""
-        if self.mesh_gen.load_point_cloud(self.input_file):
-            info = self.mesh_gen.get_info()
-            self.log(f"Файл загружен: {self.input_file}")
-            self.log(f"Количество точек: {info.get('points', 0)}")
-        else:
-            self.log("Ошибка загрузки файла")
-
-    def generate_mesh(self):
-        """Запускает создание mesh"""
-        if not self.input_file:
-            messagebox.showerror("Ошибка", "Сначала выберите входной файл")
-            return
-
-        self.generate_btn.config(state='disabled')
-        self.save_btn.config(state='disabled')
-        self.view_btn.config(state='disabled')
-        self.progress.start()
-
-        self.log_text.config(state='normal')
-        self.log_text.delete(1.0, tk.END)
-        self.log_text.config(state='disabled')
-
-        self.log("=" * 50)
-        self.log("ЗАПУСК ПРОЦЕССА СОЗДАНИЯ 3D-МОДЕЛИ")
-        self.log(f"Файл: {os.path.basename(self.input_file)}")
-        self.log(f"Метод: {self.method_var.get()}")
-        self.log(f"Качество: {self.quality_var.get()}")
-        self.log(f"Глубина: {self.depth_var.get()}")
-        self.log("=" * 50)
-
-        def update_progress(message):
-            self.after(0, lambda: self.log(message))
-
-        def generate_thread():
-            try:
-                # Загружаем облако точек
-                update_progress("Загрузка облака точек...")
-                if not self.mesh_gen.load_point_cloud(self.input_file):
-                    update_progress("Ошибка загрузки файла")
-                    return
-
-                method = self.method_var.get()
-                quality = self.quality_var.get()
-                depth = self.depth_var.get()
-
-                if method == "poisson":
-                    # Используем новый метод с заполнением дыр
-                    self.mesh_gen.generate_hole_free_mesh(depth=depth, quality=quality)
-
-                elif method == "alpha":
-                    alpha = self.alpha_var.get()
-                    update_progress(f"Alpha Shapes реконструкция (alpha={alpha})...")
-                    self.mesh_gen.generate_mesh_alpha(alpha=alpha)
-
-                elif method == "ball":
-                    update_progress("Ball Pivoting реконструкция...")
-                    self.mesh_gen.generate_mesh_ball_pivoting()
-
-                # Пост-обработка
-                if self.mesh_gen.mesh:
-                    if self.simplify_var.get():
-                        update_progress("Упрощение модели...")
-                        self.mesh_gen.simplify_mesh()
-
-                    if self.smooth_var.get():
-                        update_progress("Сглаживание...")
-                        self.mesh_gen.smooth_mesh(iterations=3)
-
-                    update_progress("Очистка модели...")
-                    self.mesh_gen.clean_mesh()
-
-                    info = self.mesh_gen.get_info()
-                    update_progress("=" * 50)
-                    update_progress("МОДЕЛЬ УСПЕШНО СОЗДАНА!")
-                    update_progress(f"Вершин: {info.get('vertices', 0)}")
-                    update_progress(f"Треугольников: {info.get('triangles', 0)}")
-                    if info.get('watertight'):
-                        update_progress("✓ Модель без дыр (водонепроницаема)")
-                    else:
-                        update_progress("⚠ Модель имеет мелкие дыры")
-                    update_progress("=" * 50)
-
-                    self.after(0, self.enable_save_buttons)
-                else:
-                    update_progress("Не удалось создать модель")
-
-            except Exception as e:
-                import traceback
-                error_msg = str(e)
-                trace = traceback.format_exc()
-                update_progress(f"❌ Ошибка: {error_msg}")
-                print(trace)
-            finally:
-                self.after(0, self.progress.stop)
-                self.after(0, lambda: self.generate_btn.config(state='normal'))
-
-        thread = threading.Thread(target=generate_thread)
-        thread.daemon = True
-        thread.start()
-
-    def enable_save_buttons(self):
-        """Активирует кнопки сохранения и просмотра"""
-        self.save_btn.config(state='normal')
-        self.view_btn.config(state='normal')
-        self.log("Кнопки сохранения и просмотра активированы")
-
-    def save_mesh(self):
-        """Сохраняет mesh в файл"""
-        if not self.mesh_gen.mesh:
-            return
-
-        filename = filedialog.asksaveasfilename(
-            title="Сохранить 3D-модель",
-            defaultextension=".ply",
-            filetypes=[
-                ("PLY files", "*.ply"),
-                ("OBJ files", "*.obj"),
-                ("STL files", "*.stl"),
-                ("All files", "*.*")
-            ]
-        )
-        if filename:
-            if self.mesh_gen.save_mesh(filename):
-                self.log(f"Модель сохранена: {filename}")
-                messagebox.showinfo("Успех", f"Модель сохранена:\n{filename}")
-            else:
-                self.log("Ошибка сохранения")
-
-    def view_mesh(self):
-        """Открывает mesh во вьювере"""
-        if self.mesh_gen.mesh and hasattr(self.parent, 'main_window') and hasattr(self.parent.main_window, 'viewer'):
-            import tempfile
-            temp_file = os.path.join(tempfile.gettempdir(), 'temp_mesh.ply')
-            if self.mesh_gen.save_mesh(temp_file):
-                self.parent.main_window.viewer.load_model(temp_file)
-                self.log("Модель открыта в 3D вьювере")
-            else:
-                self.log("Ошибка сохранения временного файла")
-
-    def log(self, message):
-        """Добавляет сообщение в лог"""
-        self.log_text.config(state='normal')
-        self.log_text.insert(tk.END, message + "\n")
+    def log(self, msg):
+        self.log_text.insert(tk.END, f"> {msg}\n")
         self.log_text.see(tk.END)
-        self.log_text.config(state='disabled')
-        self.update()
+        self.update_idletasks()
+
+    def start_processing(self):
+        self.run_btn.config(state='disabled')
+        threading.Thread(target=self.process_logic, daemon=True).start()
+
+    def process_logic(self):
+        try:
+            self.log("Загрузка облака точек...")
+            if not self.mesh_gen.load_point_cloud(self.input_file):
+                self.log("Ошибка загрузки.")
+                return
+
+            depth = self.depth_scale.get()
+            self.log(f"Генерация поверхности (depth={depth})...")
+            self.mesh_gen.generate_mesh_poisson(depth=depth)
+
+            if self.clean_var.get():
+                self.log("Очистка сетки от артефактов...")
+                self.mesh_gen.clean_mesh()
+
+            s_iters = self.smooth_scale.get()
+            if s_iters > 0:
+                self.log(f"Применение сглаживания ({s_iters} итераций)...")
+                self.mesh_gen.smooth_mesh(iterations=s_iters)
+
+            t_count = self.tri_scale.get()
+            self.log(f"Упрощение геометрии до {t_count} полигонов...")
+            self.mesh_gen.simplify_mesh(target_triangles=t_count)
+
+            self.log("Обработка завершена. Выберите имя файла.")
+
+            self.after(0, self.ask_save_name)
+
+        except Exception as e:
+            self.log(f"Ошибка: {str(e)}")
+            self.run_btn.config(state='normal')
+
+    def ask_save_name(self):
+        default_name = os.path.basename(self.input_file).replace(".ply", "_mesh.ply")
+
+        output_path = filedialog.asksaveasfilename(
+            title="Сохранить 3D-модель",
+            initialfile=default_name,
+            defaultextension=".ply",
+            filetypes=[("PLY mesh", "*.ply"), ("All files", "*.*")]
+        )
+
+        if output_path:
+            if self.mesh_gen.save_mesh(output_path):
+                self.log(f"Успешно сохранено: {os.path.basename(output_path)}")
+                messagebox.showinfo("Успех", f"Модель успешно создана и сохранена:\n{output_path}")
+
+                if hasattr(self.parent, 'main_window') and hasattr(self.parent.main_window, 'viewer'):
+                    self.parent.main_window.viewer.load_model(output_path)
+            else:
+                self.log("Ошибка при сохранении файла.")
+        else:
+            self.log("Сохранение отменено.")
+
+        self.run_btn.config(state='normal')

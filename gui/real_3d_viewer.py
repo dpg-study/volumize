@@ -8,7 +8,6 @@ import time
 
 
 class Real3DViewer:
-    """3D-вьювер на базе Open3D с управлением"""
 
     def __init__(self, parent_frame, config, embedded=False):
         self.parent = parent_frame
@@ -26,7 +25,6 @@ class Real3DViewer:
         self.start_viewer_thread()
 
     def setup_ui(self):
-        """Создает панель управления"""
         self.main_frame = ttk.Frame(self.parent)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -71,7 +69,6 @@ class Real3DViewer:
         self.viewer_frame.pack(fill=tk.BOTH, expand=True)
 
     def start_viewer_thread(self):
-        """Запускает Open3D в отдельном потоке"""
 
         def viewer_thread():
             self.vis = o3d.visualization.VisualizerWithKeyCallback()
@@ -123,7 +120,6 @@ class Real3DViewer:
         time.sleep(1)
 
     def setup_key_callbacks(self):
-        """Настройка горячих клавиш"""
         if not self.vis:
             return
 
@@ -159,7 +155,6 @@ class Real3DViewer:
         self.vis.register_key_callback(ord('S'), screenshot_callback)
 
     def clear_viewer(self):
-        """Очищает вьювер от всех моделей"""
         if not self.vis:
             return
 
@@ -175,11 +170,9 @@ class Real3DViewer:
         thread.start()
 
     def toggle_coord_frame(self):
-        """Показывает/скрывает координатные стрелки"""
         if not self.vis:
             return
 
-        # ИСПРАВЛЕНО: убрал get_geometries()
         def toggle_thread():
             self.show_coord = not self.show_coord
             if self.show_coord:
@@ -201,7 +194,6 @@ class Real3DViewer:
         thread.start()
 
     def load_model_dialog(self):
-        """Диалог загрузки модели"""
         filename = filedialog.askopenfilename(
             title="Выберите 3D модель",
             filetypes=[
@@ -215,7 +207,6 @@ class Real3DViewer:
             self.load_model(filename)
 
     def load_model(self, filepath):
-        """Загружает модель из файла"""
         self.status_var.set(f"Загрузка: {os.path.basename(filepath)}...")
 
         def load_thread():
@@ -260,7 +251,6 @@ class Real3DViewer:
         thread.start()
 
     def reset_view(self):
-        """Сброс вида камеры"""
         if self.view_control:
             self.view_control.set_front([0, 0, -1])
             self.view_control.set_up([0, -1, 0])
@@ -268,7 +258,6 @@ class Real3DViewer:
             self.status_var.set("Вид сброшен")
 
     def show_pointcloud(self):
-        """Показывает как облако точек"""
         if self.geometry and self.vis:
             def convert_thread():
                 if isinstance(self.geometry, o3d.geometry.TriangleMesh):
@@ -285,7 +274,6 @@ class Real3DViewer:
             thread.start()
 
     def create_mesh(self):
-        """Создает поверхность из облака точек методом Пуассона"""
         if isinstance(self.geometry, o3d.geometry.PointCloud):
             self.status_var.set("Построение поверхности...")
 
@@ -319,7 +307,6 @@ class Real3DViewer:
             thread.start()
 
     def take_screenshot(self):
-        """Делает скриншот текущего вида"""
         if self.vis:
             filename = filedialog.asksaveasfilename(
                 defaultextension=".png",
@@ -330,6 +317,5 @@ class Real3DViewer:
                 self.status_var.set(f"Скриншот сохранен: {os.path.basename(filename)}")
 
     def close(self):
-        """Закрывает вьювер"""
         self.is_running = False
         time.sleep(0.1)

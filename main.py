@@ -4,7 +4,7 @@ import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-# Добавляем путь к проекту
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from gui.main_window import MainWindow
@@ -18,26 +18,26 @@ class Application(tk.Tk):
         self.geometry("1200x800")
         self.minsize(1000, 600)
 
-        # Создаем меню
+
         self.create_menu()
 
-        # Создаем главное окно
+
         self.main_window = MainWindow(self)
         self.main_window.pack(fill=tk.BOTH, expand=True)
 
-        # Обработка закрытия
+
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        # Статус бар
+
         self.status_bar = ttk.Label(self, text="Готов к работе", relief=tk.SUNKEN)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
     def create_menu(self):
-        """Создание меню приложения"""
+
         menubar = tk.Menu(self)
         self.config(menu=menubar)
 
-        # Меню Файл
+
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Файл", menu=file_menu)
 
@@ -56,7 +56,7 @@ class Application(tk.Tk):
 
         file_menu.add_command(label="Выход", command=self.on_closing)
 
-        # Меню Помощь
+
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Помощь", menu=help_menu)
 
@@ -64,12 +64,12 @@ class Application(tk.Tk):
         help_menu.add_command(label="Инструкция", command=self.show_help)
 
     def show_about(self):
-        """О программе"""
+
         about_text = """3D Reconstruction Studio\n\nВерсия: 1.0.0\nТехнологии:\n- COLMAP\n- Open3D\n- Python/Tkinter"""
         messagebox.showinfo("О программе", about_text)
 
     def show_help(self):
-        """Инструкция"""
+
         help_text = """ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ:
 
 1. РЕКОНСТРУКЦИЯ ПО ФОТО:
@@ -83,14 +83,14 @@ class Application(tk.Tk):
    - Вращайте мышью
 
 3. ПРЕОБРАЗОВАНИЕ В 3D МОДЕЛЬ:
-   - Нажмите "🔨 Облако точек → 3D модель"
+   - Нажмите "Облако точек → 3D модель"
    - Выберите PLY файл
    - Нажмите "Создать 3D-модель"
 """
         messagebox.showinfo("Инструкция", help_text)
 
     def on_closing(self):
-        """Обработка закрытия"""
+
         if hasattr(self.main_window, 'on_closing'):
             self.main_window.on_closing()
 
