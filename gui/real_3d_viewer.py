@@ -5,10 +5,10 @@ import numpy as np
 import threading
 import os
 import time
+import queue
 
 
 class Real3DViewer:
-
     def __init__(self, parent_frame, config, embedded=False):
         self.parent = parent_frame
         self.config = config
@@ -20,6 +20,7 @@ class Real3DViewer:
         self.is_loaded = False
         self.view_control = None
         self.is_running = True
+        self.task_queue = queue.Queue()
 
         self.setup_ui()
         self.start_viewer_thread()
@@ -69,27 +70,22 @@ class Real3DViewer:
         self.viewer_frame.pack(fill=tk.BOTH, expand=True)
 
     def start_viewer_thread(self):
-
         def viewer_thread():
             self.vis = o3d.visualization.VisualizerWithKeyCallback()
 
+            width, height = 800, 600
             if self.embedded:
                 try:
-                    x = self.parent.winfo_rootx()
-                    y = self.parent.winfo_rooty()
+                    self.parent.update()
                     width = max(400, self.parent.winfo_width())
                     height = max(300, self.parent.winfo_height())
                 except:
-                    x, y, width, height = 100, 100, 800, 600
-            else:
-                x, y, width, height = 100, 100, 800, 600
+                    pass
 
             self.vis.create_window(
                 window_name="3D Viewer",
                 width=width,
                 height=height,
-                left=x,
-                top=y,
                 visible=True
             )
 
@@ -99,66 +95,37 @@ class Real3DViewer:
             opt = self.vis.get_render_option()
             opt.background_color = np.array([0.15, 0.15, 0.15])
             opt.point_size = 2.0
-            opt.line_width = 1.0
 
             self.view_control = self.vis.get_view_control()
             self.setup_key_callbacks()
 
             while self.is_running:
+                try:
+                    while not self.task_queue.empty():
+                        task = self.task_queue.get_nowait()
+                        task()
+                except:
+                    pass
+
                 self.vis.poll_events()
                 self.vis.update_renderer()
-
-                if self.embedded:
-                    time.sleep(0.05)
-                else:
-                    time.sleep(0.01)
+                time.sleep(0.01)
 
             self.vis.destroy_window()
 
         thread = threading.Thread(target=viewer_thread, daemon=True)
         thread.start()
-        time.sleep(1)
 
     def setup_key_callbacks(self):
-        if not self.vis:
-            return
-
-        def reset_callback(vis):
-            self.reset_view()
-            return False
-
-        def clear_callback(vis):
-            self.clear_viewer()
-            return False
-
-        def toggle_coord_callback(vis):
-            self.toggle_coord_frame()
-            return False
-
-        def pointcloud_callback(vis):
-            self.show_pointcloud()
-            return False
-
-        def mesh_callback(vis):
-            self.create_mesh()
-            return False
-
-        def screenshot_callback(vis):
-            self.take_screenshot()
-            return False
-
-        self.vis.register_key_callback(ord('R'), reset_callback)
-        self.vis.register_key_callback(ord('C'), clear_callback)
-        self.vis.register_key_callback(ord('F'), toggle_coord_callback)
-        self.vis.register_key_callback(ord('P'), pointcloud_callback)
-        self.vis.register_key_callback(ord('M'), mesh_callback)
-        self.vis.register_key_callback(ord('S'), screenshot_callback)
+        self.vis.register_key_callback(ord('R'), lambda v: self.reset_view() or False)
+        self.vis.register_key_callback(ord('C'), lambda v: self.clear_viewer() or False)
+        self.vis.register_key_callback(ord('F'), lambda v: self.toggle_coord_frame() or False)
+        self.vis.register_key_callback(ord('P'), lambda v: self.show_pointcloud() or False)
+        self.vis.register_key_callback(ord('M'), lambda v: self.create_mesh() or False)
+        self.vis.register_key_callback(ord('S'), lambda v: self.take_screenshot() or False)
 
     def clear_viewer(self):
-        if not self.vis:
-            return
-
-        def clear_thread():
+        def action():
             self.vis.clear_geometries()
             if self.show_coord and self.coord_frame:
                 self.vis.add_geometry(self.coord_frame)
@@ -166,156 +133,114 @@ class Real3DViewer:
             self.is_loaded = False
             self.status_var.set("Вьювер очищен")
 
-        thread = threading.Thread(target=clear_thread, daemon=True)
-        thread.start()
+        self.task_queue.put(action)
 
     def toggle_coord_frame(self):
-        if not self.vis:
-            return
-
-        def toggle_thread():
+        def action():
             self.show_coord = not self.show_coord
             if self.show_coord:
-                try:
-                    self.vis.add_geometry(self.coord_frame, reset_bounding_box=False)
-                except:
-                    pass
+                self.vis.add_geometry(self.coord_frame, reset_bounding_box=False)
                 self.toggle_coord_btn.config(text="Скрыть стрелки")
-                self.status_var.set("Стрелки показаны")
             else:
-                try:
-                    self.vis.remove_geometry(self.coord_frame, reset_bounding_box=False)
-                except:
-                    pass
+                self.vis.remove_geometry(self.coord_frame, reset_bounding_box=False)
                 self.toggle_coord_btn.config(text="Показать стрелки")
-                self.status_var.set("Стрелки скрыты")
 
-        thread = threading.Thread(target=toggle_thread, daemon=True)
-        thread.start()
+        self.task_queue.put(action)
 
     def load_model_dialog(self):
         filename = filedialog.askopenfilename(
-            title="Выберите 3D модель",
-            filetypes=[
-                ("PLY files", "*.ply"),
-                ("OBJ files", "*.obj"),
-                ("STL files", "*.stl"),
-                ("All files", "*.*")
-            ]
+            filetypes=[("3D files", "*.ply *.obj *.stl"), ("All files", "*.*")]
         )
         if filename:
             self.load_model(filename)
 
     def load_model(self, filepath):
-        self.status_var.set(f"Загрузка: {os.path.basename(filepath)}...")
+        self.status_var.set("Загрузка...")
 
-        def load_thread():
+        def worker():
             try:
-                if filepath.endswith('.ply'):
+                ext = os.path.splitext(filepath)[1].lower()
+                if ext == '.ply':
                     try:
-                        mesh = o3d.io.read_triangle_mesh(filepath)
-                        if mesh.has_triangles():
-                            self.geometry = mesh
-                        else:
-                            self.geometry = o3d.io.read_point_cloud(filepath)
+                        geom = o3d.io.read_triangle_mesh(filepath)
+                        if not geom.has_triangles():
+                            geom = o3d.io.read_point_cloud(filepath)
                     except:
-                        self.geometry = o3d.io.read_point_cloud(filepath)
-
-                elif filepath.endswith('.obj') or filepath.endswith('.stl'):
-                    self.geometry = o3d.io.read_triangle_mesh(filepath)
+                        geom = o3d.io.read_point_cloud(filepath)
+                elif ext in ['.obj', '.stl']:
+                    geom = o3d.io.read_triangle_mesh(filepath)
                 else:
-                    self.geometry = o3d.io.read_point_cloud(filepath)
+                    geom = o3d.io.read_point_cloud(filepath)
 
-                if self.geometry:
-                    self.geometry.translate(-self.geometry.get_center())
+                geom.translate(-geom.get_center())
 
+                def update_vis():
                     self.vis.clear_geometries()
-
-                    if self.show_coord and self.coord_frame:
-                        self.vis.add_geometry(self.coord_frame)
-
-                    self.vis.add_geometry(self.geometry)
-
-                    if self.view_control:
-                        self.view_control.set_front([0, 0, -1])
-                        self.view_control.set_up([0, -1, 0])
-                        self.view_control.set_zoom(1.0)
-
+                    if self.show_coord: self.vis.add_geometry(self.coord_frame)
+                    self.vis.add_geometry(geom)
+                    self.geometry = geom
+                    self.reset_view()
                     self.is_loaded = True
                     self.status_var.set(f"Загружено: {os.path.basename(filepath)}")
 
+                self.task_queue.put(update_vis)
             except Exception as e:
                 self.status_var.set(f"Ошибка: {str(e)}")
 
-        thread = threading.Thread(target=load_thread, daemon=True)
-        thread.start()
+        threading.Thread(target=worker, daemon=True).start()
 
     def reset_view(self):
-        if self.view_control:
-            self.view_control.set_front([0, 0, -1])
-            self.view_control.set_up([0, -1, 0])
-            self.view_control.set_zoom(1.0)
-            self.status_var.set("Вид сброшен")
+        def action():
+            if self.view_control:
+                self.view_control.set_front([0, 0, -1])
+                self.view_control.set_up([0, -1, 0])
+                self.view_control.set_zoom(0.8)
+
+        self.task_queue.put(action)
 
     def show_pointcloud(self):
-        if self.geometry and self.vis:
-            def convert_thread():
-                if isinstance(self.geometry, o3d.geometry.TriangleMesh):
-                    pcd = self.geometry.sample_points_uniformly(number_of_points=100000)
+        if not self.geometry: return
 
+        def worker():
+            if isinstance(self.geometry, o3d.geometry.TriangleMesh):
+                pcd = self.geometry.sample_points_uniformly(number_of_points=50000)
+
+                def update():
                     self.vis.clear_geometries()
-                    if self.show_coord and self.coord_frame:
-                        self.vis.add_geometry(self.coord_frame)
+                    if self.show_coord: self.vis.add_geometry(self.coord_frame)
                     self.vis.add_geometry(pcd)
                     self.geometry = pcd
-                    self.status_var.set("Режим: облако точек")
 
-            thread = threading.Thread(target=convert_thread, daemon=True)
-            thread.start()
+                self.task_queue.put(update)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def create_mesh(self):
-        if isinstance(self.geometry, o3d.geometry.PointCloud):
-            self.status_var.set("Построение поверхности...")
+        if not isinstance(self.geometry, o3d.geometry.PointCloud): return
+        self.status_var.set("Обработка...")
 
-            def mesh_thread():
-                try:
-                    self.geometry.estimate_normals(
-                        search_param=o3d.geometry.KDTreeSearchParamHybrid(
-                            radius=0.1, max_nn=30
-                        )
-                    )
+        def worker():
+            try:
+                self.geometry.estimate_normals()
+                mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(self.geometry, depth=9)
 
-                    mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
-                        self.geometry, depth=9
-                    )
-
-                    vertices_to_remove = densities < np.quantile(densities, 0.1)
-                    mesh.remove_vertices_by_mask(vertices_to_remove)
-
+                def update():
                     self.vis.clear_geometries()
-                    if self.show_coord and self.coord_frame:
-                        self.vis.add_geometry(self.coord_frame)
+                    if self.show_coord: self.vis.add_geometry(self.coord_frame)
                     self.vis.add_geometry(mesh)
                     self.geometry = mesh
+                    self.status_var.set("Сетка создана")
 
-                    self.status_var.set("Поверхность построена")
+                self.task_queue.put(update)
+            except Exception as e:
+                self.status_var.set(f"Ошибка: {str(e)}")
 
-                except Exception as e:
-                    self.status_var.set(f"Ошибка: {str(e)}")
-
-            thread = threading.Thread(target=mesh_thread, daemon=True)
-            thread.start()
+        threading.Thread(target=worker, daemon=True).start()
 
     def take_screenshot(self):
-        if self.vis:
-            filename = filedialog.asksaveasfilename(
-                defaultextension=".png",
-                filetypes=[("PNG files", "*.png")]
-            )
-            if filename:
-                self.vis.capture_screen_image(filename)
-                self.status_var.set(f"Скриншот сохранен: {os.path.basename(filename)}")
+        filename = filedialog.asksaveasfilename(defaultextension=".png")
+        if filename:
+            self.task_queue.put(lambda: self.vis.capture_screen_image(filename))
 
     def close(self):
         self.is_running = False
-        time.sleep(0.1)
