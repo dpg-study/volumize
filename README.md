@@ -1,3 +1,11 @@
 # Volumize
 
-View our product trailer: https://drive.google.com/file/d/1P6wkegB7AMx9tAFupWkx1lwSz0FdtLiq/view?usp=drive_link
+Просмотрите трейлер нашего приложения: https://drive.google.com/file/d/1P6wkegB7AMx9tAFupWkx1lwSz0FdtLiq/view?usp=drive_link
+
+Использование:
+1. Скачать файлы проекта
+2. Запустить виртуальное окружение
+3. Подгрузить библиотеки из requirements.txt
+   pip install
+4. Подготовить папку с фотографиями модели
+5. Запустить main.py
