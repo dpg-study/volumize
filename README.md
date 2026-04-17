@@ -1,5 +1,7 @@
 # Volumize
 
+Десктоп приложение для создания 3д-моделей на основе серии фотоснимков.
+
 Просмотрите трейлер нашего приложения: https://drive.google.com/file/d/1P6wkegB7AMx9tAFupWkx1lwSz0FdtLiq/view?usp=drive_link
 
 Использование:
